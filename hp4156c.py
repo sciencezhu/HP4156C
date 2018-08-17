@@ -9,41 +9,52 @@
 # This allows the HP4156C to wrap the visa class
 # When wrapped the HP4156C class takes care of all the visa syntax
 # and translates parameter analyser settings into visa commands
-import sys,visa,os
+import sys,visa,os, time
 import numpy as np
 
 
 class hp4156c(object):
 	def __init__(self,device_id=''):
-		self.deviceName = "HEWLETT-PACKARD,4156C,0,03.04:04.05:01.00"
+		self.deviceName = "HEWLETT-PACKARD,4156B,0,02.10:03.06:01.00"
+		print ("test")
 		self.device_id = device_id
 		self._initialise()
 
-	def _initialise(self):
+	def _initialise(self, address='GPIB0::17::INSTR'):
 		"""Iterates through all devices on the GPIB bus until it finds the
 		parameter analyser with ID _self.deviceName. If no parameter analyser found
 		the initiation is aborted and a sys.exit is called"""
 		print("HP4156C Initialisation")
-		rm = visa.ResourceManager()
-		_devices = rm.list_resources()
-		print(_devices)
-		for _x in range(0,len(_devices)):
-			print(_devices[_x])
-			try:
-				self.pa = rm.open_resource((_devices[_x]))
-				self.device_id = self.pa.ask("*IDN?").encode().rstrip()
-				if(self.device_id == self.deviceName):
-					print("Found device %s"%self.device_id)
-					break
-			except:
-				print("Could not connect to device %s"%_devices[_x])
-		if(self.device_id != self.deviceName):
-			print("Could not find the parameter analyser.")
-			print("Exiting.")
-			sys.exit()
-		else:
-			self.pa.write("*rst")
-		print("Connected to device %s"%_devices[_x])
+		rm = visa.ResourceManager("C:/Windows/SysWOW64/visa32.dll")
+		self.pa = rm.open_resource(address)
+		self.pa.read_termination = '\n'
+		self.pa.write_termination = '\n'
+		self.pa.timeout = 800000
+		self.pa.write("*rst")
+		print(self.pa.query('*IDN?'))
+		
+
+
+#		_devices = rm.list_resources()
+#		print(_devices)
+#		for _x in _devices:
+#			print("Here is devices found in resources: " + _x)
+#			try:
+#				self.pa = rm.open_resource(_x)
+#				self.device_id = self.pa.query("*IDN?\n").encode().rstrip()
+#				print ("*IDN? found such device id: " + self.device_id)
+#				if(self.device_id == self.deviceName):
+#					print("Found device from *IDN? command %s"%self.device_id)
+#					break
+#			except:
+#				print("Could not connect to device " + _x)
+#		if(self.device_id != self.deviceName):
+#			print("Could not find the parameter analyser.")
+#			print("Exiting.")
+#			sys.exit()
+#		else:
+#			self.pa.write("*rst")
+#		print("Connected to device " + _x)
 	def reset(self):
 		""" Calls a reset command on the parameter analyser"""
 		self.pa.write("*rst")
@@ -121,18 +132,22 @@ class hp4156c(object):
 		#self.data = self._daqStringMod(arg)
 		self.values=values #necessary for saving data
 		self.data =[[]]*len(values)
-		self.pa.timeout=120000
+		self.pa.timeout=1200000
 		for x in range(0,len(values)):
 			try:
 				print("Obtaining %s data values" % values[x])
 				self.pa.write(":DATA? %s"%values[x])
 			except:
 				print("Command Timeout!")
-			read = self.pa.read() # returns unicode string of values
+#			read = self.pa.read() # returns unicode string of values
+			read = self.pa.read_raw()
 			#decodes string and adds to data array
-			self.data[x] = [float(a) for a in read.encode().rstrip().split(",")]
+#			print (read)
+#			print (type(read))
+			self.data[x] = [float(a) for a in read.decode("utf-8").rstrip().split(",")]
+#			self.data[x] = [float(a) for a in read.split(",")]
 			print("Obtained %d data values for %s" % (len(self.data[x]),values[x]))
-		self.pa.timeout=3000
+		self.pa.timeout=300000
 		self.data=np.transpose(np.array(self.data))
 		print ("data in an {} array".format(self.data.shape))
 
@@ -151,8 +166,9 @@ class hp4156c(object):
 		self.pa.write(":PAGE:SCON:SING")
 		self.pa.write("*WAI")
 		self.pa.timeout=1e6 #if you need more than 11.6 days you're fucked
+		time.sleep(5)
 		self.pa.ask("*OPC?")
-		self.pa.timeout=10
+		self.pa.timeout=3000000
 
 
 	def continuous(self):
@@ -226,7 +242,8 @@ class hp4156c(object):
 
 	def get_error(self, v=True):
 		"""Returns the first value in the error register"""
+		print ("Error occured")
 		err=self.pa.ask(":SYST:ERR?")
 		if v:
-			print(err)
+			print("Error is: " + err)
 		return err
